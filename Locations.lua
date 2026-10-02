@@ -82,8 +82,6 @@ function GQ.Locations:Resolve(entry)
             end
         end
     end
-        end
-    end
 
     if entry.sourceType == "profession" and entry.profession then
         local trainers = self:Trainers(entry.profession)

@@ -141,11 +141,12 @@ local zoneGroupCoords = GQ.Locations:DescribeCoords({ id = 9, itemId = 999005, s
 assert(zoneGroupCoords and zoneGroupCoords:find("zone only", 1, true), "zone only coords line, got " .. tostring(zoneGroupCoords))
 
 -- Dungeon-entrance fallback tuples are labeled; a false flat list is tolerated.
-GQ.LocationsIndex[999006] = { b = { { 1436, 40, 60, "B", false, 1 } } }
+GQ.LocationsIndex[999006] = { b = { { 1418, 44.6, 12.1, "B", false, 1 } } }
 local entrancePins = GQ.Locations:Resolve({ id = 10, itemId = 999006, sourceType = "boss_drop" })
 assert(#entrancePins == 1 and entrancePins[1].entrance == true, "entrance flag")
 assert(entrancePins[1].flat == nil, "false flat list normalised to nil")
-assert(GQ.Locations:AreaContains(entrancePins[1], 40, 60), "entrance pin contains point")
+assert(GQ.Locations:AreaBounds(entrancePins[1]), "bounds work without a footprint")
+assert(GQ.Locations:AreaContains(entrancePins[1], 44.6, 12.1), "entrance pin contains point")
 local entranceCoords = GQ.Locations:DescribeCoords({ id = 10, itemId = 999006, sourceType = "boss_drop" })
 assert(entranceCoords and entranceCoords:find("(entrance)", 1, true), "entrance coords label")
 assert(not (pins[1] and pins[1].entrance), "real spawns are not labeled")
