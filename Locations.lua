@@ -141,6 +141,11 @@ end
 function GQ.Locations:DescribeCoords(entry)
     local pins = self:Resolve(entry)
     if #pins == 0 then
+        -- Random world drops have no spawn to plot; say so instead of showing nothing.
+        local lo, hi = string.match((entry and entry.instructions) or "", "World drop around level (%d+)[^%d]+(%d+)")
+        if entry and entry.sourceType == "world_drop" and lo then
+            return string.format("Coords: none - random drop from any mob, levels %s-%s", lo, hi)
+        end
         return nil
     end
 
