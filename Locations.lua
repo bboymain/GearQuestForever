@@ -82,6 +82,8 @@ function GQ.Locations:Resolve(entry)
             end
         end
     end
+        end
+    end
 
     if entry.sourceType == "profession" and entry.profession then
         local trainers = self:Trainers(entry.profession)
@@ -157,7 +159,11 @@ function GQ.Locations:DescribeCoords(entry)
                 zones[#zones + 1] = zone
             else
                 seen[pin.mapId] = true
-                parts[#parts + 1] = string.format("%s (%.1f, %.1f)%s", zone, pin.x, pin.y, pin.entrance and " (entrance)" or "")
+                local text = string.format("%s (%.1f, %.1f)", zone, pin.x, pin.y)
+                if pin.entrance then
+                    text = text .. " (entrance)"
+                end
+                parts[#parts + 1] = text
             end
         end
     end

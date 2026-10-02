@@ -26,3 +26,10 @@ Groups in `Locations.generated.lua`: `q` quest giver, `b` boss/dungeon,
 
 - Location and quest data: [QuestieDB](https://github.com/Questie/Questie) baked database + `support/Forever` zone tables.
 - Item name/quality audit generated from Wowhead Forever item pages.
+
+## Data sources
+
+- The location index is generated from QuestieDB (https://github.com/Questie/Questie).
+- QuestieDB credits: Code: Logonz Data: Muehe/TheCrux(BreakBB)/Drejjmit/Dyaxler/Cheeq/TechnoHunter/Yttrium/Everyone else
+- Questie/QuestieDB declares no license. This repo makes no license claim over the derived data.
+- Item name/quality audit generated from Wowhead Forever item pages.
