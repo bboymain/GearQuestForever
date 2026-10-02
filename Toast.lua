@@ -43,13 +43,15 @@ local function EnsureFrame()
 
     if frame.SetBackdrop then
         frame:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true,
+            tileSize = 32,
+            edgeSize = 16,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 },
         })
-        frame:SetBackdropColor(0.06, 0.06, 0.07, 0.94)
-        frame:SetBackdropBorderColor(0.30, 0.80, 0.75, 1)
+        frame:SetBackdropColor(0.05, 0.05, 0.08, 0.92)
+        frame:SetBackdropBorderColor(0.85, 0.65, 0.12, 1)
     else
         local bg = frame:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()

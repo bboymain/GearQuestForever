@@ -58,12 +58,6 @@ function GQ.Commands:Init()
             else
                 print("|cff66ccffGearQuest|r: No upgrade selected.")
             end
-        elseif lower == "map" then
-            if GQ.Log.selectedEntry then
-                GQ.Map:Show(GQ.Log.selectedEntry)
-            else
-                print("|cff66ccffGearQuest|r: No upgrade selected. Open |cff00ff00/gq log|r and pick one.")
-            end
         elseif lower == "help" then
             GQ.Preview:PrintHelp()
         elseif lower == "wipe data" then

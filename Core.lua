@@ -9,7 +9,7 @@ end
 GQ = GQ or {}
 _G.GearQuest = GQ
 
-GQ.VERSION = "0.2.19-beta"
+GQ.VERSION = "0.2.20-beta"
 GQ.ADDON_NAME = ADDON_NAME
 -- WoW Forever: 1–60 Classic+ (no TBC level cap).
 GQ.MAX_PLAYER_LEVEL = 60
@@ -247,7 +247,6 @@ function GQ:PLAYER_LOGIN()
     end)
     run("Toast", function() self.Toast:Init() end)
     run("Tracker", function() self.Tracker:Init() end)
-    run("Pins", function() self.Pins:Init() end)
     run("Popup", function() self.Popup:Init() end)
     run("PaperDoll", function() self.PaperDoll:Init() end)
     run("Minimap", function() self.Minimap:Init() end)

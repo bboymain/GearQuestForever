@@ -10,7 +10,7 @@ local DEFAULT_WIDTH = 100
 local MIN_DESC_WORDS = 10
 local MAX_DESC_WORDS = 30
 local TITLE_TEXT = "GearQuest Tracker"
-local TITLE_COLOR = { 0.30, 0.80, 0.75 }
+local TITLE_COLOR = { 1, 0.82, 0 }
 local ENTRY_NAME_COLOR = { 1, 1, 1 }
 local ENTRY_DESC_COLOR = { 1, 1, 1, 0.72 }
 local ENTRY_GAP = 6
@@ -178,17 +178,12 @@ function GQ.Tracker:GetTrackedEntries()
                 results[#results + 1] = {
                     entry = entry,
                     trackedAt = record.trackedAt or 0,
-                    distance = GQ.Map and GQ.Map.DistanceTo and GQ.Map:DistanceTo(entry) or math.huge,
                 }
             end
         end
     end
 
-    -- Closest source first; unknown locations keep tracked order at the end.
     table.sort(results, function(a, b)
-        if a.distance ~= b.distance then
-            return a.distance < b.distance
-        end
         if a.trackedAt ~= b.trackedAt then
             return a.trackedAt < b.trackedAt
         end
@@ -548,7 +543,7 @@ function GQ.Tracker:LayoutEntries(entries, descWordLimit)
 
         local itemName = row.cachedItemName
         local instructions = entry.instructions
-        if GQ.Data and GQ.Data.GetProfessionInstructions then
+        if entry.sourceType == "profession" and GQ.Data and GQ.Data.GetProfessionInstructions then
             instructions = GQ.Data:GetProfessionInstructions(entry)
         end
         if GQ.Data and GQ.Data.SanitizeText then
@@ -684,7 +679,6 @@ function GQ.Tracker:UpdateRowTooltipWatch()
     if GetTime() - row.gqTooltipStillSince >= ROW_TOOLTIP_STILL_DELAY then
         GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
         GameTooltip:SetText("Click to open in GearQuest Log", 1, 1, 1)
-        GameTooltip:AddLine("Right-click to show on map", 0.8, 0.8, 0.8)
         GameTooltip:Show()
         row.gqTooltipShown = true
     end
@@ -707,7 +701,7 @@ function GQ.Tracker:EnsureEntryRows(count)
                 highlight:SetAlpha(0.35)
             end
         end
-        row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        row:RegisterForClicks("LeftButtonUp")
 
         row.name = CreateFontString(row, "GameFontNormal")
         row.name:SetWidth(width)
@@ -721,14 +715,10 @@ function GQ.Tracker:EnsureEntryRows(count)
         ConfigureWrappedFontString(row.desc)
         row.desc:SetTextColor(ENTRY_DESC_COLOR[1], ENTRY_DESC_COLOR[2], ENTRY_DESC_COLOR[3], ENTRY_DESC_COLOR[4])
 
-        row:SetScript("OnClick", function(self, button)
+        row:SetScript("OnClick", function(self)
             if self.entryId and GQ.Tracker then
                 GQ.Tracker:CancelRowTooltipWatch(self)
-                if button == "RightButton" then
-                    GQ.Map:Show(GQ.Data:GetEntryById(self.entryId))
-                else
-                    GQ.Tracker:OpenHunt(self.entryId)
-                end
+                GQ.Tracker:OpenHunt(self.entryId)
             end
         end)
 
@@ -1068,14 +1058,14 @@ function GQ.Tracker:BeginResize()
 end
 
 function GQ.Tracker:Refresh(widthOverride, heightOverride)
+    if GQ.Pins and GQ.Pins.Sync then
+        GQ.Pins:Sync()
+    end
     if not self.frame then
         return
     end
 
     local entries = self:GetTrackedEntries()
-    if GQ.Pins then
-        GQ.Pins:Sync(entries)
-    end
     if #entries == 0 then
         self:StopResize()
         self:HideResizeBorder()
@@ -1325,13 +1315,7 @@ function GQ.Tracker:Init()
 
     local listener = CreateFrame("Frame")
     GQ.RegisterEvent(listener, "GET_ITEM_INFO_RECEIVED")
-    -- ponytail: re-sort by distance only on zone/subzone change, not while walking; add a slow ticker if that feels stale.
-    GQ.RegisterEvent(listener, "ZONE_CHANGED")
-    GQ.RegisterEvent(listener, "ZONE_CHANGED_NEW_AREA")
-    listener:SetScript("OnEvent", function(_, event)
-        if event ~= "GET_ITEM_INFO_RECEIVED" then
-            GQ.Tracker:Refresh()
-        end
+    listener:SetScript("OnEvent", function()
     end)
     self.itemInfoListener = listener
 

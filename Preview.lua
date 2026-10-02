@@ -318,7 +318,6 @@ function GQ.Preview:PrintHelp()
     print("  |cff00ff00/gq set me|r — copy your real character into preview")
     print("  |cff00ff00/gq spec enhancement|r — set specialization (level 10+)")
     print("  |cff00ff00/gq log|r — toggle GearQuest log window")
-    print("  |cff00ff00/gq map|r — show the selected upgrade on the world map")
     print("  |cff00ff00/gq wipe data|r — reset hunt progress (for testing obtain/toast)")
 end
 

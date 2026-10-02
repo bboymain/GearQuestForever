@@ -27,20 +27,6 @@ local spanCache = {}
 local elapsedAcc = 0
 local poolsActive = true
 
-local function SelectedPinOnMap(mapId)
-    if not selectedEntryId or not mapId then
-        return nil
-    end
-    for _, pin in ipairs(pins) do
-        if pin.entry and pin.entry.id == selectedEntryId and pin.mapId == mapId then
-            return pin
-        end
-    end
-    return nil
-end
-
--- Yards per 0-100 map percent, cached per map. Sign-agnostic: callers
--- re-derive east/north from the map's own axis directions.
 local function MapSpans(mapId)
     local cached = spanCache[mapId]
     if cached then
@@ -66,43 +52,14 @@ local function ShowPinTooltip(frame)
         return
     end
     local entry = pin.entry
-
     GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
-
     local name = GQ.Data and GQ.Data.GetEntryDisplayName and GQ.Data:GetEntryDisplayName(entry)
     GameTooltip:AddLine(name or ("Item " .. tostring(entry.itemId)), 1, 0.82, 0)
-
-    local instructions = entry.instructions
-    if GQ.Data and GQ.Data.GetProfessionInstructions then
-        instructions = GQ.Data:GetProfessionInstructions(entry)
-    end
-    if GQ.Data and GQ.Data.SanitizeText then
-        instructions = GQ.Data:SanitizeText(instructions) or instructions
-    end
-    if instructions and instructions ~= "" then
-        GameTooltip:AddLine(instructions, 0.9, 0.9, 0.9, true)
-    end
-
     local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(pin.mapId)
-    local zone = (info and info.name) or entry.zone or ""
-    if pin.zoneOnly then
-        if zone ~= "" then
-            GameTooltip:AddLine(zone, 0.6, 0.8, 1)
-        end
-    elseif zone ~= "" then
-        GameTooltip:AddLine(string.format("%s (%.1f, %.1f)", zone, pin.x, pin.y), 0.6, 0.8, 1)
+    local zone = pin.map or (info and info.name) or entry.zone or ""
+    if zone ~= "" then
+        GameTooltip:AddLine(string.format("%s %.1f, %.1f", zone, pin.x, pin.y), 0.6, 0.8, 1)
     end
-
-    if pin.entrance then
-        GameTooltip:AddLine("Dungeon entrance", 0.8, 0.8, 0.8)
-    end
-
-    if pin.fac == "A" then
-        GameTooltip:AddLine("Alliance", 0.3, 0.5, 1)
-    elseif pin.fac == "H" then
-        GameTooltip:AddLine("Horde", 1, 0.25, 0.25)
-    end
-
     GameTooltip:Show()
 end
 
@@ -126,8 +83,6 @@ local function WirePin(frame)
     end)
     return frame
 end
-
--- World map pins ----------------------------------------------------------------
 
 local function EnsureWorldPin(index)
     local frame = worldPool[index]
@@ -162,6 +117,7 @@ local function EnsureWorldArea(canvas)
     worldArea.tex:SetTexture(AREA_TEXTURE)
     worldArea.tex:SetAllPoints()
     worldArea.tex:SetVertexColor(AREA_COLOR[1], AREA_COLOR[2], AREA_COLOR[3], AREA_COLOR[4])
+    worldArea:EnableMouse(false)
     worldArea:Hide()
     return worldArea
 end
@@ -197,13 +153,8 @@ local function UpdateWorldMap()
                 break
             end
             local nx, ny = pin.x / 100, pin.y / 100
-            if frame.lastNX ~= nx or frame.lastNY ~= ny
-                or frame.lastW ~= width or frame.lastH ~= height then
-                frame.lastNX, frame.lastNY = nx, ny
-                frame.lastW, frame.lastH = width, height
-                frame:ClearAllPoints()
-                frame:SetPoint("CENTER", canvas, "TOPLEFT", nx * width, -ny * height)
-            end
+            frame:ClearAllPoints()
+            frame:SetPoint("CENTER", canvas, "TOPLEFT", nx * width, -ny * height)
             local texture = ICONS[pin.kind] or ICONS.w
             if frame.lastTexture ~= texture then
                 frame.lastTexture = texture
@@ -218,27 +169,24 @@ local function UpdateWorldMap()
     end
 
     local area = EnsureWorldArea(canvas)
-    local pin = SelectedPinOnMap(mapId)
-    if not pin then
+    local selected
+    if selectedEntryId then
+        for _, pin in ipairs(pins) do
+            if pin.entry and pin.entry.id == selectedEntryId and pin.mapId == mapId then
+                selected = pin
+                break
+            end
+        end
+    end
+    if not selected then
         area:Hide()
         return
     end
-    local cx, cy, rx, ry = GQ.Locations:AreaBounds(pin)
-    local padX = (rx > 0 and rx * 0.3 or 0) + 1
-    local padY = (ry > 0 and ry * 0.3 or 0) + 1
-    local areaW = math.max((rx + padX) * 2 * width / 100, width * 0.10)
-    local areaH = math.max((ry + padY) * 2 * height / 100, height * 0.10)
-    local key = string.format("%d:%d:%d", mapId, math.floor(cx * 10), math.floor(cy * 10))
-    if area.lastKey ~= key or area.lastW ~= width or area.lastH ~= height then
-        area.lastKey, area.lastW, area.lastH = key, width, height
-        area:ClearAllPoints()
-        area:SetPoint("CENTER", canvas, "TOPLEFT", cx / 100 * width, -cy / 100 * height)
-        area:SetSize(areaW, areaH)
-    end
+    area:ClearAllPoints()
+    area:SetPoint("CENTER", canvas, "TOPLEFT", selected.x / 100 * width, -selected.y / 100 * height)
+    area:SetSize(math.max(width * 0.08, 64), math.max(height * 0.08, 64))
     area:Show()
 end
-
--- Minimap pins ------------------------------------------------------------------
 
 local function EnsureMiniPin(index)
     local frame = miniPool[index]
@@ -267,6 +215,7 @@ local function EnsureMiniArea()
     miniArea.tex:SetTexture(AREA_TEXTURE)
     miniArea.tex:SetAllPoints()
     miniArea.tex:SetVertexColor(AREA_COLOR[1], AREA_COLOR[2], AREA_COLOR[3], AREA_COLOR[4])
+    miniArea:EnableMouse(false)
     miniArea:Hide()
     return miniArea
 end
@@ -280,8 +229,6 @@ local function HideMiniPins()
     end
 end
 
--- Rotating minimaps turn the map under a fixed-up orientation; GetPlayerFacing
--- is restricted on some clients, so fall back to facing north-up.
 local function FacingRadians()
     if not (GetCVar and GetCVar("rotateMinimap") == "1") then
         return 0, false
@@ -305,7 +252,6 @@ local function UpdateMinimap()
         return
     end
     local px, py = playerPos:GetXY()
-
     local radius = C_Minimap and C_Minimap.GetViewRadius and C_Minimap.GetViewRadius()
     if not radius or radius <= 0 then
         HideMiniPins()
@@ -316,8 +262,11 @@ local function UpdateMinimap()
     local facing, rotating = FacingRadians()
     local cos, sin = math.cos(facing), math.sin(facing)
     local spanX, spanY = MapSpans(playerMap)
+    if spanX <= 0 or spanY <= 0 then
+        HideMiniPins()
+        return
+    end
 
-    -- Map percent deltas -> east/north yards -> minimap fractions of view radius.
     local function project(x, y)
         local east = (x - px) * spanX
         local north = (py - y) * spanY
@@ -332,18 +281,14 @@ local function UpdateMinimap()
 
     local used = 0
     for _, pin in ipairs(pins) do
-        if pin.mapId == playerMap and GQ.Locations:AreaContains(pin, px, py) then
-            local fx, fy = project(pin.x, pin.y)
+        if pin.mapId == playerMap then
+            local fx, fy = project(pin.x / 100, pin.y / 100)
             if fx * fx + fy * fy <= EDGE_LIMIT_SQ then
                 used = used + 1
                 local frame = EnsureMiniPin(used)
                 if frame then
-                    local ox, oy = fx * halfW, -fy * halfH
-                    if frame.lastOX ~= ox or frame.lastOY ~= oy then
-                        frame.lastOX, frame.lastOY = ox, oy
-                        frame:ClearAllPoints()
-                        frame:SetPoint("CENTER", Minimap, "CENTER", ox, oy)
-                    end
+                    frame:ClearAllPoints()
+                    frame:SetPoint("CENTER", Minimap, "CENTER", fx * halfW, -fy * halfH)
                     local texture = ICONS[pin.kind] or ICONS.w
                     if frame.lastTexture ~= texture then
                         frame.lastTexture = texture
@@ -360,25 +305,29 @@ local function UpdateMinimap()
     end
 
     local area = EnsureMiniArea()
-    local pin = SelectedPinOnMap(playerMap)
-    if not pin or not GQ.Locations:AreaContains(pin, px, py) then
+    local selected
+    if selectedEntryId then
+        for _, pin in ipairs(pins) do
+            if pin.entry and pin.entry.id == selectedEntryId and pin.mapId == playerMap then
+                selected = pin
+                break
+            end
+        end
+    end
+    if not selected then
         area:Hide()
         return
     end
-    local cx, cy, rx, ry = GQ.Locations:AreaBounds(pin)
-    local fx, fy = project(cx, cy)
-    local eastRadius = rx * spanX
-    local northRadius = ry * spanY
-    local yardRadius = math.max(eastRadius, northRadius)
-    local size = math.min(math.max(yardRadius / radius * halfW, halfW * 0.15), halfW * 0.9)
-    local ox, oy = fx * halfW, -fy * halfH
+    local fx, fy = project(selected.x / 100, selected.y / 100)
+    if fx * fx + fy * fy > EDGE_LIMIT_SQ then
+        area:Hide()
+        return
+    end
     area:ClearAllPoints()
-    area:SetPoint("CENTER", Minimap, "CENTER", ox, oy)
-    area:SetSize(size * 2, size * 2)
+    area:SetPoint("CENTER", Minimap, "CENTER", fx * halfW, -fy * halfH)
+    area:SetSize(halfW * 0.7, halfH * 0.7)
     area:Show()
 end
-
--- Driver -------------------------------------------------------------------------
 
 local function UpdateAll()
     if #pins == 0 then
@@ -394,23 +343,20 @@ local function UpdateAll()
     UpdateMinimap()
 end
 
-function GQ.Pins:Sync(entries)
+function GQ.Pins:Sync()
     if not driver then
         self:Init()
     end
-
     pins = {}
-    if not entries and GQ.Tracker and GQ.Tracker.GetTrackedEntries then
-        entries = GQ.Tracker:GetTrackedEntries()
-    end
-    if entries then
+    local entries = GQ.Tracker and GQ.Tracker.GetTrackedEntries and GQ.Tracker:GetTrackedEntries()
+    if entries and GQ.Map and GQ.Map.SpotForEntry then
         for _, entry in ipairs(entries) do
-            for _, pin in ipairs(GQ.Locations:Resolve(entry)) do
+            local pin = GQ.Map:SpotForEntry(entry)
+            if pin then
                 pins[#pins + 1] = pin
             end
         end
     end
-
     if selectedEntryId then
         local found = false
         for _, pin in ipairs(pins) do
@@ -423,7 +369,6 @@ function GQ.Pins:Sync(entries)
             selectedEntryId = nil
         end
     end
-
     UpdateAll()
 end
 
@@ -442,3 +387,10 @@ function GQ.Pins:Init()
     end)
     UpdateAll()
 end
+
+local boot = CreateFrame("Frame")
+boot:RegisterEvent("PLAYER_LOGIN")
+boot:SetScript("OnEvent", function()
+    GQ.Pins:Init()
+    GQ.Pins:Sync()
+end)

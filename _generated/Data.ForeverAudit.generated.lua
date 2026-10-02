@@ -1495,7 +1495,7 @@ GQ.Data.foreverAudit = {
     [8181]={status="ok",name="Hunting Rifle",quality=1},
     [8182]={status="ok",name="Pellet Rifle",quality=1},
     [8183]={status="ok",name="Precision Bow",quality=2},
-    [8184]={status="ok",name="Firestarter",quality=2,tip="Item Level 29Binds when equippedRangedWand\n 15 - 30 Fire Damage\n Speed 1.50\n(15.00 damage per second)Durability 55 / 55Requires Level 24Sell Price: 29 47"},
+    [8184]={status="ok",name="Firestarter",quality=2},
     [8190]={status="ok",name="Hanzo Sword",quality=3},
     [8192]={status="ok",name="Nightscape Shoulders",quality=2},
     [8193]={status="ok",name="Nightscape Pants",quality=2},

@@ -300,13 +300,15 @@ function GQ.Popup:Init()
     bar:Hide()
     if bar.SetBackdrop then
         bar:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8X8",
-            edgeFile = "Interface\\Buttons\\WHITE8X8",
-            edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
         })
-        bar:SetBackdropColor(0.06, 0.06, 0.07, 0.92)
-        bar:SetBackdropBorderColor(0.20, 0.20, 0.23, 1)
+        bar:SetBackdropColor(0.05, 0.05, 0.05, 0.88)
+        bar:SetBackdropBorderColor(0.4, 0.35, 0.25, 1)
     else
         local bg = bar:CreateTexture(nil, "BACKGROUND")
         bg:SetAllPoints()
