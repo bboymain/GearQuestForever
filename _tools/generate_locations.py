@@ -275,6 +275,17 @@ def sample_pairs(flat, limit):
     return out
 
 
+def entrance_flag(entry):
+    """True for index tuples stamped by the dungeon-entrance fallback."""
+    return len(entry) >= 6 and entry[5] is True
+
+
+def drop_entrance_where_real(entries):
+    """A map that has real spawns keeps them; entrance tuples there are dropped."""
+    real_maps = {entry[0] for entry in entries if not entrance_flag(entry)}
+    return [entry for entry in entries if not entrance_flag(entry) or entry[0] not in real_maps]
+
+
 def main():
     meta = read_toc_meta(QDB_TOC)
     npc_prefix, npc_keys = fields_from_meta(os.path.join(QDB_DIR, "src", "meta", "npcMeta.lua"), "Npc")
@@ -320,7 +331,12 @@ def main():
         return value
 
     def spawn_tuples(spawn_table, prefer_dungeon=True):
-        """spawnlist -> [(mapId, x, y)] for every area that resolves."""
+        """spawnlist -> [(mapId, x, y, isEntrance)] for every area that resolves.
+
+        isEntrance is True only when the mob's own coordinates were replaced by
+        the dungeon entrance from dungeons.lua (the mob lives inside a dungeon,
+        whose interior coordinates are not useful for a world pin).
+        """
         if isinstance(spawn_table, list):
             # Contiguous 1..n area keys serialize as a CBOR array.
             spawn_table = {index + 1: points for index, points in enumerate(spawn_table)}
@@ -333,7 +349,7 @@ def main():
             if dungeon and prefer_dungeon and 0 <= dungeon[2] <= 100 and 0 <= dungeon[3] <= 100:
                 parent_map = map_for_area(dungeon[0]) or map_for_area(dungeon[1])
                 if parent_map:
-                    out.append((parent_map, dungeon[2], dungeon[3]))
+                    out.append((parent_map, dungeon[2], dungeon[3], True))
                 continue
             map_id = map_for_area(area_id)
             if not map_id:
@@ -342,7 +358,7 @@ def main():
                 if isinstance(point, (list, tuple)) and len(point) >= 2:
                     x, y = float(point[0]), float(point[1])
                     if 0 <= x <= 100 and 0 <= y <= 100:
-                        out.append((map_id, x, y))
+                        out.append((map_id, x, y, False))
         return out
 
     def npc_spawn_tuples(npc_id, prefer_dungeon=True):
@@ -383,15 +399,16 @@ def main():
                 out.append(map_id)
 
     def points_by_map(entity_ids, spawn_fn, faction_fn, prefer_dungeon=True):
-        """{mapId: [x, y, ...]} plus running faction merge."""
+        """{mapId: {"real": [...], "entrance": [...]}} plus running faction merge."""
         points = {}
         fac = {}
         for entity_id in entity_ids or []:
-            for map_id, x, y in spawn_fn(entity_id, prefer_dungeon):
-                bucket = points.setdefault(map_id, [])
-                if len(bucket) >= MAX_WORLD_POINTS * MAX_WORLD_SAMPLES * 16:
+            for map_id, x, y, is_entrance in spawn_fn(entity_id, prefer_dungeon):
+                bucket = points.setdefault(map_id, {"real": [], "entrance": []})
+                key = "entrance" if is_entrance else "real"
+                if len(bucket[key]) >= MAX_WORLD_POINTS * MAX_WORLD_SAMPLES * 16:
                     continue
-                bucket.extend((round(x, 1), round(y, 1)))
+                bucket[key].extend((round(x, 1), round(y, 1)))
                 fac[map_id] = merge_faction(fac.get(map_id), faction_fn(entity_id))
         return points, fac
 
@@ -422,14 +439,14 @@ def main():
                 objs_list = as_ints(finished[1])
 
         for npc_id in npcs_list:
-            for map_id, x, y in npc_spawn_tuples(npc_id, prefer_dungeon=False)[:2]:
+            for map_id, x, y, _is_entrance in npc_spawn_tuples(npc_id, prefer_dungeon=False)[:2]:
                 dedupe_push(out, seen, (map_id, round(x, 1), round(y, 1), npc_faction(npc_id)), MAX_GROUP)
         for obj_id in objs_list:
-            for map_id, x, y in obj_spawn_tuples(obj_id, prefer_dungeon=False)[:2]:
+            for map_id, x, y, _is_entrance in obj_spawn_tuples(obj_id, prefer_dungeon=False)[:2]:
                 dedupe_push(out, seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
 
         for item_id in items_list:
-            for map_id, x, y in drop_points(item_id)[:2]:
+            for map_id, x, y, _is_entrance in drop_points(item_id)[:2]:
                 dedupe_push(out, seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
 
         parents = []
@@ -443,7 +460,7 @@ def main():
         return out
 
     def drop_points(item_id):
-        """npcDrops + objectDrops resolved to spawn points (open areas first)."""
+        """npcDrops + objectDrops resolved to (mapId, x, y, isEntrance) points."""
         out = []
         for npc_id in as_ints(items.field(item_id, "npcDrops")):
             out.extend(npc_spawn_tuples(npc_id, prefer_dungeon=False))
@@ -467,23 +484,32 @@ def main():
             quest_givers(int(quest_id), out=quest_group, seen=seen)
         start_quest = items.scalar_field(item_id, "startQuest")
         if start_quest:
-            for map_id, x, y in drop_points(item_id)[:4]:
+            for map_id, x, y, _is_entrance in drop_points(item_id)[:4]:
                 dedupe_push(quest_group, seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
             source_item = quests.scalar_field(int(start_quest), "sourceItemId")
             if source_item:
-                for map_id, x, y in drop_points(int(source_item))[:3]:
+                for map_id, x, y, _is_entrance in drop_points(int(source_item))[:3]:
                     dedupe_push(quest_group, seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
         if quest_group:
             groups["q"] = quest_group
 
         # Boss / dungeon: pin the dungeon the drop lives in.
+        # Entrance substitutions are flagged so the runtime can label them; a map
+        # that also has real spawns keeps only those.
         boss_group, boss_seen = [], set()
         for npc_id in (as_ints(items.field(item_id, "npcDrops")))[:MAX_GROUP * 2]:
-            for map_id, x, y in npc_spawn_tuples(npc_id, prefer_dungeon=True)[:2]:
-                dedupe_push(boss_group, boss_seen, (map_id, round(x, 1), round(y, 1), npc_faction(npc_id)), MAX_GROUP)
+            for map_id, x, y, is_entrance in npc_spawn_tuples(npc_id, prefer_dungeon=True)[:2]:
+                tuple_out = (map_id, round(x, 1), round(y, 1), npc_faction(npc_id))
+                if is_entrance:
+                    tuple_out = tuple_out + (False, True)
+                dedupe_push(boss_group, boss_seen, tuple_out, MAX_GROUP)
         for obj_id in (as_ints(items.field(item_id, "objectDrops")))[:MAX_GROUP]:
-            for map_id, x, y in obj_spawn_tuples(obj_id, prefer_dungeon=True)[:2]:
-                dedupe_push(boss_group, boss_seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
+            for map_id, x, y, is_entrance in obj_spawn_tuples(obj_id, prefer_dungeon=True)[:2]:
+                tuple_out = (map_id, round(x, 1), round(y, 1), "B")
+                if is_entrance:
+                    tuple_out = tuple_out + (False, True)
+                dedupe_push(boss_group, boss_seen, tuple_out, MAX_GROUP)
+        boss_group = drop_entrance_where_real(boss_group)
         if boss_group:
             groups["b"] = boss_group
 
@@ -491,7 +517,7 @@ def main():
         for npc_id in (as_ints(items.field(item_id, "vendors")))[:MAX_GROUP * 2]:
             tuples = npc_spawn_tuples(npc_id, prefer_dungeon=False)
             if tuples:
-                map_id, x, y = tuples[0]
+                map_id, x, y, _is_entrance = tuples[0]
                 dedupe_push(vendor_group, vendor_seen, (map_id, round(x, 1), round(y, 1), npc_faction(npc_id)), MAX_GROUP)
         if vendor_group:
             groups["v"] = vendor_group
@@ -501,7 +527,7 @@ def main():
         if str(item_class) == "9":
             prof_group = list(vendor_group)
             prof_seen = {(t[0], round(t[1], 1), round(t[2], 1)) for t in prof_group}
-            for map_id, x, y in drop_points(item_id)[:MAX_GROUP * 2]:
+            for map_id, x, y, _is_entrance in drop_points(item_id)[:MAX_GROUP * 2]:
                 dedupe_push(prof_group, prof_seen, (map_id, round(x, 1), round(y, 1), "B"), MAX_GROUP)
             if prof_group:
                 groups["p"] = prof_group[:MAX_GROUP]
@@ -509,19 +535,30 @@ def main():
         world_group = []
         drop_maps, drop_fac = npc_points_by_map(as_ints(items.field(item_id, "npcDrops")))
         obj_maps, obj_fac = obj_points_by_map(as_ints(items.field(item_id, "objectDrops")))
-        for map_id, obj_points in obj_maps.items():
-            drop_maps.setdefault(map_id, []).extend(obj_points)
+        for map_id, buckets in obj_maps.items():
+            merged = drop_maps.setdefault(map_id, {"real": [], "entrance": []})
+            for bucket_key in ("real", "entrance"):
+                merged[bucket_key].extend(buckets[bucket_key])
         for map_id, fac in obj_fac.items():
             drop_fac[map_id] = merge_faction(drop_fac.get(map_id), fac)
-        ranked = sorted(drop_maps.items(), key=lambda kv: -len(kv[1]) // 2)
-        for map_id, flat in ranked[:MAX_WORLD_ZONES]:
+        ranked = sorted(
+            drop_maps.items(),
+            key=lambda kv: -(len(kv[1]["real"]) + len(kv[1]["entrance"])) // 2,
+        )
+        for map_id, buckets in ranked[:MAX_WORLD_ZONES]:
+            # Real spawns on this map win; entrance coordinates are the fallback.
+            is_entrance = not buckets["real"]
+            flat = buckets["entrance"] if is_entrance else buckets["real"]
             xs = flat[0::2]
             ys = flat[1::2]
             if not xs:
                 continue
             cx = round(sum(xs) / len(xs), 1)
             cy = round(sum(ys) / len(ys), 1)
-            world_group.append((map_id, cx, cy, drop_fac.get(map_id, "B"), flat))
+            tuple_out = (map_id, cx, cy, drop_fac.get(map_id, "B"), flat)
+            if is_entrance:
+                tuple_out = tuple_out + (True,)
+            world_group.append(tuple_out)
         if world_group:
             groups["w"] = world_group
 
@@ -566,7 +603,7 @@ def main():
         tuples = npc_spawn_tuples(npc_id, prefer_dungeon=False)
         if not tuples:
             continue
-        map_id, x, y = tuples[0]
+        map_id, x, y, _is_entrance = tuples[0]
         trainer_candidates.setdefault(matched, []).append(
             (map_id, round(x, 1), round(y, 1), npc_faction(npc_id))
         )
@@ -592,7 +629,8 @@ def main():
         out.write("-- Do not edit by hand: rerun the generator instead.\n")
         out.write("-- Groups: q=quest giver, b=boss/dungeon, p=profession, v=vendor, w=world drop,\n")
         out.write("--         z=zone only (drop data names the area, no coordinates).\n")
-        out.write("-- Tuple: {mapId, x, y, faction}, world drop keeps {mapId, x, y, faction, flatPoints}.\n\n")
+        out.write("-- Tuple: {mapId, x, y, faction}, world drop keeps {mapId, x, y, faction, flatPoints}.\n")
+        out.write("-- Dungeon-entrance fallbacks append 1: {mapId, x, y, faction, flatPoints|false, 1}.\n\n")
         out.write("GQ.LocationsIndex = {\n")
         for item_id, groups in index.items():
             if not groups:
@@ -603,11 +641,17 @@ def main():
                 for entry in group:
                     if len(entry) == 1:
                         tuples.append("{%d}" % entry[0])
-                    elif len(entry) > 4:
+                        continue
+                    if len(entry) > 4 and isinstance(entry[4], (list, tuple)):
                         pts = ",".join("%g" % p for p in sample_pairs(entry[4], MAX_WORLD_POINTS))
-                        tuples.append("{%d,%g,%g,\"%s\",{%s}}" % (entry[0], entry[1], entry[2], entry[3], pts))
+                        text = "{%d,%g,%g,\"%s\",{%s}}" % (entry[0], entry[1], entry[2], entry[3], pts)
+                    elif len(entry) > 4:
+                        text = "{%d,%g,%g,\"%s\",false}" % (entry[0], entry[1], entry[2], entry[3])
                     else:
-                        tuples.append("{%d,%g,%g,\"%s\"}" % (entry[0], entry[1], entry[2], entry[3]))
+                        text = "{%d,%g,%g,\"%s\"}" % (entry[0], entry[1], entry[2], entry[3])
+                    if entrance_flag(entry):
+                        text = text[:-1] + ",1}"
+                    tuples.append(text)
                 parts.append("%s={%s}" % (key, ",".join(tuples)))
             out.write("[%d]={%s},\n" % (item_id, ",".join(parts)))
         out.write("}\n\n")

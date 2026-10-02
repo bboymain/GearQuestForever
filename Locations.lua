@@ -4,7 +4,8 @@ GQ.Locations = GQ.Locations or {}
 
 -- Generated groups (see _tools/generate_locations.py): q=quest giver, b=boss/dungeon,
 -- p=profession, v=vendor, w=world drop, z=zone only (no coordinates in the source data).
--- Tuples: {mapId, x, y, faction[, flatPoints]}; z tuples are {mapId}.
+-- Tuples: {mapId, x, y, faction[, flatPoints|false[, 1]]}; trailing 1 marks a dungeon-entrance
+-- fallback; z tuples are {mapId}.
 local SOURCE_GROUP = {
     quest_reward = "q",
     seasonal_quest = "q",
@@ -73,7 +74,8 @@ function GQ.Locations:Resolve(entry)
                     y = t[3],
                     kind = groupKey,
                     fac = t[4],
-                    flat = t[5],
+                    flat = t[5] or nil,
+                    entrance = (t[6] == 1) or nil,
                     trainer = isTrainer or nil,
                     entry = entry,
                 }
@@ -155,7 +157,7 @@ function GQ.Locations:DescribeCoords(entry)
                 zones[#zones + 1] = zone
             else
                 seen[pin.mapId] = true
-                parts[#parts + 1] = string.format("%s (%.1f, %.1f)", zone, pin.x, pin.y)
+                parts[#parts + 1] = string.format("%s (%.1f, %.1f)%s", zone, pin.x, pin.y, pin.entrance and " (entrance)" or "")
             end
         end
     end

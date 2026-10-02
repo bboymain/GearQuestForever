@@ -93,6 +93,10 @@ local function ShowPinTooltip(frame)
         GameTooltip:AddLine(string.format("%s (%.1f, %.1f)", zone, pin.x, pin.y), 0.6, 0.8, 1)
     end
 
+    if pin.entrance then
+        GameTooltip:AddLine("Dungeon entrance", 0.8, 0.8, 0.8)
+    end
+
     if pin.fac == "A" then
         GameTooltip:AddLine("Alliance", 0.3, 0.5, 1)
     elseif pin.fac == "H" then
